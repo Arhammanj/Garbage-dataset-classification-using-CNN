@@ -2,6 +2,7 @@
 the transforms in src/data/transforms.py.
 """
 
+from collections import defaultdict
 from pathlib import Path
 
 import torch
@@ -38,15 +39,32 @@ def get_dataloaders(cfg: TrainConfig):
     if n == 0:
         raise ValueError(f"No images found under {data_dir}. Check the folder layout.")
 
-    n_test = int(n * cfg.test_split)
-    n_val = int(n * cfg.val_split)
-    n_train = n - n_val - n_test
+    # Stratified split: split indices per class (not globally), so each of
+    # train/val/test gets approximately the same class proportions as the
+    # full dataset. A global shuffle can leave a minority class with zero
+    # samples in val/test purely by chance on an imbalanced dataset.
+    by_class = defaultdict(list)
+    for idx, (path, label) in enumerate(train_view.samples):
+        by_class[label].append((path, idx))
 
     generator = torch.Generator().manual_seed(cfg.seed)
-    indices = torch.randperm(n, generator=generator).tolist()
-    train_idx = indices[:n_train]
-    val_idx = indices[n_train:n_train + n_val]
-    test_idx = indices[n_train + n_val:]
+    train_idx, val_idx, test_idx = [], [], []
+    for label in sorted(by_class):
+        # Sort by path first so the split only depends on seed + file
+        # contents, never on filesystem listing order.
+        class_indices = [idx for _, idx in sorted(by_class[label], key=lambda item: item[0])]
+        n_c = len(class_indices)
+
+        perm = torch.randperm(n_c, generator=generator).tolist()
+        shuffled = [class_indices[i] for i in perm]
+
+        n_c_test = int(n_c * cfg.test_split)
+        n_c_val = int(n_c * cfg.val_split)
+        n_c_train = n_c - n_c_val - n_c_test
+
+        train_idx.extend(shuffled[:n_c_train])
+        val_idx.extend(shuffled[n_c_train:n_c_train + n_c_val])
+        test_idx.extend(shuffled[n_c_train + n_c_val:])
 
     train_loader = DataLoader(
         Subset(train_view, train_idx), batch_size=cfg.batch_size,
