@@ -1,10 +1,11 @@
 from pathlib import Path
-import sys
 
 import streamlit as st
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
+from torchvision.models import resnet18
 from torchvision import transforms
 
 
@@ -14,22 +15,11 @@ from torchvision import transforms
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-
-# ============================================================
-# MODEL IMPORT
-# ============================================================
-
-from src.models.resnet_transfer import build_model
-
-
-# ============================================================
-# MODEL PATH AND DEVICE
-# ============================================================
-
-MODEL_PATH = PROJECT_ROOT / "models" / "resnet18_waste_classifier.pth"
+MODEL_PATH = (
+    PROJECT_ROOT
+    / "models"
+    / "resnet18_waste_classifier.pth"
+)
 
 DEVICE = torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
@@ -37,7 +27,7 @@ DEVICE = torch.device(
 
 
 # ============================================================
-# STREAMLIT PAGE CONFIGURATION
+# STREAMLIT CONFIGURATION
 # ============================================================
 
 st.set_page_config(
@@ -48,13 +38,42 @@ st.set_page_config(
 
 
 # ============================================================
-# LOAD MODEL
+# BUILD RESNET18 MODEL
+# ============================================================
+
+def build_model(
+    num_classes: int,
+    freeze_backbone: bool = True
+):
+
+    model = resnet18(
+        weights=None
+    )
+
+    if freeze_backbone:
+
+        for param in model.parameters():
+            param.requires_grad = False
+
+    in_features = model.fc.in_features
+
+    model.fc = nn.Linear(
+        in_features,
+        num_classes
+    )
+
+    return model
+
+
+# ============================================================
+# LOAD TRAINED MODEL
 # ============================================================
 
 @st.cache_resource
 def load_model():
 
     if not MODEL_PATH.exists():
+
         raise FileNotFoundError(
             f"Model file not found: {MODEL_PATH}"
         )
@@ -65,6 +84,7 @@ def load_model():
     )
 
     classes = checkpoint["classes"]
+
     img_size = checkpoint["img_size"]
 
     model = build_model(
@@ -91,6 +111,7 @@ model, classes, img_size = load_model()
 # ============================================================
 
 transform = transforms.Compose([
+
     transforms.Resize(
         (img_size, img_size)
     ),
@@ -100,7 +121,7 @@ transform = transforms.Compose([
     transforms.Normalize(
         (0.485, 0.456, 0.406),
         (0.229, 0.224, 0.225)
-    ),
+    )
 ])
 
 
@@ -108,17 +129,28 @@ transform = transforms.Compose([
 # PREDICTION FUNCTION
 # ============================================================
 
-def predict_image(image, top_k=3):
+def predict_image(
+    image,
+    top_k=3
+):
 
-    image_tensor = transform(image)
+    image_tensor = transform(
+        image
+    )
 
-    image_tensor = image_tensor.unsqueeze(0)
+    image_tensor = image_tensor.unsqueeze(
+        0
+    )
 
-    image_tensor = image_tensor.to(DEVICE)
+    image_tensor = image_tensor.to(
+        DEVICE
+    )
 
     with torch.no_grad():
 
-        logits = model(image_tensor)
+        logits = model(
+            image_tensor
+        )
 
         probabilities = F.softmax(
             logits,
@@ -139,8 +171,14 @@ def predict_image(image, top_k=3):
     ):
 
         predictions.append({
-            "class": classes[index.item()],
-            "confidence": probability.item() * 100
+
+            "class": classes[
+                index.item()
+            ],
+
+            "confidence": (
+                probability.item() * 100
+            )
         })
 
     return predictions
@@ -150,11 +188,14 @@ def predict_image(image, top_k=3):
 # TITLE
 # ============================================================
 
-st.title("♻️ Waste Classification")
+st.title(
+    "♻️ Waste Classification"
+)
 
 st.write(
-    "Upload an image and our ResNet18 deep learning model "
-    "will classify the type of waste."
+    "Upload an image and our ResNet18 "
+    "deep learning model will classify "
+    "the type of waste."
 )
 
 
@@ -162,23 +203,36 @@ st.write(
 # MODEL INFORMATION
 # ============================================================
 
-with st.expander("Model Information"):
+with st.expander(
+    "Model Information"
+):
 
-    st.write("**Model:** ResNet18")
+    st.write(
+        "**Model:** ResNet18"
+    )
 
-    st.write("**Dataset Classes:** 10")
+    st.write(
+        "**Dataset Classes:** 10"
+    )
 
-    st.write("**Test Accuracy:** 84.94%")
+    st.write(
+        "**Test Accuracy:** 84.94%"
+    )
 
-    st.write("**Device:**", DEVICE)
+    st.write(
+        "**Device:**",
+        DEVICE
+    )
 
 
 # ============================================================
-# IMAGE UPLOAD
+# IMAGE UPLOADER
 # ============================================================
 
 uploaded_file = st.file_uploader(
+
     "Upload a waste image",
+
     type=[
         "jpg",
         "jpeg",
@@ -189,7 +243,7 @@ uploaded_file = st.file_uploader(
 
 
 # ============================================================
-# IMAGE DISPLAY AND CLASSIFICATION
+# IMAGE DISPLAY
 # ============================================================
 
 if uploaded_file is not None:
@@ -203,6 +257,11 @@ if uploaded_file is not None:
         caption="Uploaded Image",
         use_container_width=True
     )
+
+
+    # ========================================================
+    # CLASSIFY BUTTON
+    # ========================================================
 
     if st.button(
         "🔍 Classify Image",
@@ -218,35 +277,51 @@ if uploaded_file is not None:
                 top_k=3
             )
 
+
         # ====================================================
         # MAIN PREDICTION
         # ====================================================
 
         top_prediction = predictions[0]
 
-        st.subheader("Prediction")
+        st.subheader(
+            "Prediction"
+        )
 
         st.success(
+
             f"{top_prediction['class'].upper()} "
             f"— "
-            f"{top_prediction['confidence']:.2f}% confidence"
+            f"{top_prediction['confidence']:.2f}% "
+            f"confidence"
+
         )
+
 
         # ====================================================
         # TOP 3 PREDICTIONS
         # ====================================================
 
-        st.subheader("Top 3 Predictions")
+        st.subheader(
+            "Top 3 Predictions"
+        )
 
         for prediction in predictions:
 
-            class_name = prediction["class"]
+            class_name = (
+                prediction["class"]
+            )
 
-            confidence = prediction["confidence"]
+            confidence = (
+                prediction["confidence"]
+            )
 
             st.write(
+
                 f"**{class_name.capitalize()}** "
-                f"— {confidence:.2f}%"
+                f"— "
+                f"{confidence:.2f}%"
+
             )
 
             st.progress(
@@ -256,8 +331,10 @@ if uploaded_file is not None:
                 )
             )
 
+
 else:
 
     st.info(
-        "👆 Upload an image above to begin classification."
+        "👆 Upload an image above "
+        "to begin classification."
     )
