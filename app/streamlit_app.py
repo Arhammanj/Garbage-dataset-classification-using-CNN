@@ -9,17 +9,25 @@ from torchvision import transforms
 
 
 # ============================================================
-# PROJECT PATHS
+# PROJECT PATH
 # ============================================================
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
+# ============================================================
+# MODEL IMPORT
+# ============================================================
+
 from src.models.resnet_transfer import build_model
 
+
+# ============================================================
+# MODEL PATH AND DEVICE
+# ============================================================
 
 MODEL_PATH = PROJECT_ROOT / "models" / "resnet18_waste_classifier.pth"
 
@@ -69,6 +77,7 @@ def load_model():
     )
 
     model = model.to(DEVICE)
+
     model.eval()
 
     return model, classes, img_size
@@ -180,7 +189,7 @@ uploaded_file = st.file_uploader(
 
 
 # ============================================================
-# DISPLAY IMAGE AND PREDICT
+# IMAGE DISPLAY AND CLASSIFICATION
 # ============================================================
 
 if uploaded_file is not None:
